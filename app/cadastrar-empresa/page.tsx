@@ -1,89 +1,36 @@
 "use client";
 
-import Link from "next/link";
-import { FormEvent, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-type CompanyFormData = {
-  company_type: string;
+type FormState = {
+  tipo_empresa: string;
   cnpj: string;
-  corporate_name: string;
-  trade_name: string;
-  state_registration: string;
-  commercial_contact_name: string;
-  commercial_contact_cpf: string;
-  commercial_whatsapp: string;
-  primary_email: string;
-  secondary_email_1: string;
-  secondary_email_2: string;
-  secondary_email_3: string;
-  secondary_email_4: string;
-  secondary_email_5: string;
-  website: string;
-  city: string;
-  state: string;
-  address: string;
-  address_number: string;
-  neighborhood: string;
-  zip_code: string;
-  public_description: string;
-  accepts_whatsapp_contact: boolean;
-  receives_leads: boolean;
-  has_contract_template: boolean;
-  notes: string;
+  razao_social: string;
+  nome_fantasia: string;
+  inscricao_estadual: string;
+  responsavel_comercial: string;
+  cpf_responsavel: string;
+  whatsapp: string;
+  email_principal: string;
+  cidade: string;
+  estado: string;
+  aceite_nome: string;
+  aceite_documento: string;
+  aceite_concordo: boolean;
 };
 
-type SaveCompanyResponse = {
-  success?: boolean;
-  message?: string;
-  error?: string;
-};
+const ESTADOS = [
+  "AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS",
+  "MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC",
+  "SP","SE","TO",
+];
 
-type CnpjLookupResponse = {
-  success?: boolean;
-  message?: string;
-  source?: string;
-  fallback_from?: string;
-  data?: Partial<CompanyFormData> & {
-    source_status?: string | null;
-    company_nature?: string | null;
-    company_size?: string | null;
-    main_activity?: string | null;
-  };
-  attempts?: Array<{
-    source: string;
-    status: number;
-    message: string;
-  }>;
-};
-
-const initialFormData: CompanyFormData = {
-  company_type: "locadora",
-  cnpj: "",
-  corporate_name: "",
-  trade_name: "",
-  state_registration: "",
-  commercial_contact_name: "",
-  commercial_contact_cpf: "",
-  commercial_whatsapp: "",
-  primary_email: "",
-  secondary_email_1: "",
-  secondary_email_2: "",
-  secondary_email_3: "",
-  secondary_email_4: "",
-  secondary_email_5: "",
-  website: "",
-  city: "",
-  state: "",
-  address: "",
-  address_number: "",
-  neighborhood: "",
-  zip_code: "",
-  public_description: "",
-  accepts_whatsapp_contact: true,
-  receives_leads: true,
-  has_contract_template: false,
-  notes: "",
-};
+const COMISSOES = [
+  { categoria: "Passeio", valor: "R$ 1.000,00" },
+  { categoria: "Intermediário", valor: "R$ 1.500,00" },
+  { categoria: "4x4", valor: "R$ 2.000,00" },
+  { categoria: "Grande porte", valor: "R$ 3.000,00" },
+];
 
 function onlyDigits(value: string) {
   return value.replace(/\D/g, "");
@@ -91,7 +38,6 @@ function onlyDigits(value: string) {
 
 function formatCnpj(value: string) {
   const digits = onlyDigits(value).slice(0, 14);
-
   return digits
     .replace(/^(\d{2})(\d)/, "$1.$2")
     .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
@@ -101,741 +47,658 @@ function formatCnpj(value: string) {
 
 function formatCpf(value: string) {
   const digits = onlyDigits(value).slice(0, 11);
-
   return digits
     .replace(/^(\d{3})(\d)/, "$1.$2")
     .replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
     .replace(/\.(\d{3})(\d)/, ".$1-$2");
 }
 
-function formatCep(value: string) {
-  const digits = onlyDigits(value).slice(0, 8);
-  return digits.replace(/^(\d{5})(\d)/, "$1-$2");
+function formatPhone(value: string) {
+  const digits = onlyDigits(value).slice(0, 11);
+
+  if (digits.length <= 10) {
+    return digits
+      .replace(/^(\d{2})(\d)/, "($1) $2")
+      .replace(/(\d{4})(\d)/, "$1-$2");
+  }
+
+  return digits
+    .replace(/^(\d{2})(\d)/, "($1) $2")
+    .replace(/(\d{5})(\d)/, "$1-$2");
 }
 
-function isValidLookupCnpj(value: string) {
-  return onlyDigits(value).length === 14;
+function isValidEmail(value: string) {
+  return /\S+@\S+\.\S+/.test(value);
+}
+
+function AreaRestritaBloqueada() {
+  return (
+    <main className="min-h-screen bg-[linear-gradient(180deg,#eef8ff_0%,#f6fbff_42%,#ffffff_100%)] text-slate-900">
+      <section className="relative overflow-hidden">
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute left-[-120px] top-[-140px] h-[320px] w-[320px] rounded-full bg-cyan-300/25 blur-3xl" />
+          <div className="absolute right-[-80px] top-[10px] h-[260px] w-[260px] rounded-full bg-sky-300/30 blur-3xl" />
+          <div className="absolute bottom-[-120px] left-[18%] h-[260px] w-[260px] rounded-full bg-blue-200/30 blur-3xl" />
+        </div>
+
+        <div className="relative mx-auto flex min-h-screen max-w-5xl items-center px-4 py-10 sm:px-6 lg:px-8">
+          <div className="w-full rounded-[32px] border border-white/70 bg-white/90 p-8 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur sm:p-10">
+            <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-amber-700 shadow-sm">
+              Área restrita
+            </div>
+
+            <h1 className="text-4xl font-black tracking-[-0.03em] text-slate-950 sm:text-5xl">
+              Cadastro empresarial protegido
+            </h1>
+
+            <p className="mt-5 max-w-3xl text-base leading-7 text-slate-600 sm:text-lg">
+              Esta área é exclusiva para locadoras, vendedores, concessionárias, lojistas e empresas
+              autorizadas pela plataforma. Informações de comissão, termo comercial e operação interna
+              não ficam expostas publicamente.
+            </p>
+
+            <div className="mt-8 grid gap-4 md:grid-cols-2">
+              <div className="rounded-[28px] border border-slate-200 bg-slate-50/80 p-6">
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-700">
+                  Acesso restrito
+                </p>
+                <h2 className="mt-2 text-2xl font-black text-slate-950">
+                  Login da empresa
+                </h2>
+                <p className="mt-3 text-sm leading-7 text-slate-600">
+                  O acesso definitivo será feito com login e senha da empresa ou do vendedor autorizado.
+                  Nesta etapa, a área já está bloqueada para não expor comissão e regras comerciais ao público.
+                </p>
+              </div>
+
+              <div className="rounded-[28px] border border-slate-200 bg-slate-50/80 p-6">
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-700">
+                  Proteção comercial
+                </p>
+                <h2 className="mt-2 text-2xl font-black text-slate-950">
+                  Comissão resguardada
+                </h2>
+                <p className="mt-3 text-sm leading-7 text-slate-600">
+                  A lógica comercial da plataforma permanece protegida em ambiente restrito para evitar
+                  desintermediação e negociação por fora.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-8 flex flex-wrap gap-3">
+              <a
+                href="/"
+                className="inline-flex items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#0284c7_0%,#06b6d4_100%)] px-6 py-3 text-sm font-semibold text-white shadow-[0_18px_40px_rgba(2,132,199,0.28)] transition hover:scale-[1.01]"
+              >
+                Voltar para a home
+              </a>
+
+              <a
+                href="/contato"
+                className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-6 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+              >
+                Solicitar liberação
+              </a>
+            </div>
+
+            <div className="mt-8 rounded-3xl border border-amber-100 bg-[linear-gradient(135deg,#fffdf4_0%,#ffffff_100%)] p-4 text-sm text-slate-600 shadow-sm">
+              <span className="font-semibold text-amber-700">Sistema em constante atualização:</span>{" "}
+              o login completo com senha, perfis de acesso e proteção por tipo de empresa será ativado na
+              próxima etapa da área empresarial.
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
 }
 
 export default function CadastrarEmpresaPage() {
-  const [formData, setFormData] = useState<CompanyFormData>(initialFormData);
-  const [saving, setSaving] = useState(false);
-  const [lookupLoading, setLookupLoading] = useState(false);
-  const [successMessage, setSuccessMessage] = useState("");
-  const [errorMessage, setErrorMessage] = useState("");
-  const [lookupMessage, setLookupMessage] = useState("");
-  const [lookupDetails, setLookupDetails] = useState("");
-  const [lookupSource, setLookupSource] = useState("");
+  const [autorizado, setAutorizado] = useState(false);
+  const [verificandoAcesso, setVerificandoAcesso] = useState(true);
 
-  const canLookupCnpj = useMemo(
-    () => isValidLookupCnpj(formData.cnpj),
-    [formData.cnpj]
-  );
+  const [form, setForm] = useState<FormState>({
+    tipo_empresa: "Locadora",
+    cnpj: "",
+    razao_social: "",
+    nome_fantasia: "",
+    inscricao_estadual: "",
+    responsavel_comercial: "",
+    cpf_responsavel: "",
+    whatsapp: "",
+    email_principal: "",
+    cidade: "",
+    estado: "MG",
+    aceite_nome: "",
+    aceite_documento: "",
+    aceite_concordo: false,
+  });
 
-  function updateField<K extends keyof CompanyFormData>(
-    field: K,
-    value: CompanyFormData[K]
-  ) {
-    setFormData((current) => ({
-      ...current,
-      [field]: value,
-    }));
-  }
+  const [submitting, setSubmitting] = useState(false);
+  const [mensagem, setMensagem] = useState("");
+  const [erro, setErro] = useState("");
+  const [mostrarTermo, setMostrarTermo] = useState(false);
 
-  function applyLookupData(data?: CnpjLookupResponse["data"]) {
-    if (!data) return;
-
-    setFormData((current) => ({
-      ...current,
-      cnpj: data.cnpj ? formatCnpj(data.cnpj) : current.cnpj,
-      corporate_name: data.corporate_name || current.corporate_name,
-      trade_name: data.trade_name || current.trade_name,
-      primary_email: data.primary_email || current.primary_email,
-      commercial_whatsapp:
-        data.commercial_whatsapp || current.commercial_whatsapp,
-      city: data.city || current.city,
-      state: data.state || current.state,
-      address: data.address || current.address,
-      address_number: data.address_number || current.address_number,
-      neighborhood: data.neighborhood || current.neighborhood,
-      zip_code: data.zip_code ? formatCep(data.zip_code) : current.zip_code,
-      public_description:
-        data.public_description || current.public_description,
-      notes: [
-        current.notes,
-        data.main_activity ? `Atividade principal: ${data.main_activity}` : "",
-        data.source_status
-          ? `Situação cadastral: ${data.source_status}`
-          : "",
-        data.company_nature
-          ? `Natureza jurídica: ${data.company_nature}`
-          : "",
-        data.company_size ? `Porte: ${data.company_size}` : "",
-      ]
-        .filter(Boolean)
-        .join("\n")
-        .trim(),
-    }));
-  }
-
-  async function handleLookupCnpj() {
+  useEffect(() => {
     try {
-      setLookupLoading(true);
-      setLookupMessage("");
-      setLookupDetails("");
-      setLookupSource("");
-      setErrorMessage("");
-      setSuccessMessage("");
-
-      const digits = onlyDigits(formData.cnpj);
-
-      if (digits.length !== 14) {
-        setLookupMessage("Informe um CNPJ válido com 14 dígitos para consulta.");
-        return;
-      }
-
-      const response = await fetch(`/api/cnpj/${digits}`, {
-        method: "GET",
-        cache: "no-store",
-        headers: {
-          Accept: "application/json, text/plain, */*",
-        },
-      });
-
-      const rawText = await response.text();
-      let parsed: CnpjLookupResponse | null = null;
-
-      if (rawText.trim()) {
-        try {
-          parsed = JSON.parse(rawText) as CnpjLookupResponse;
-        } catch {
-          throw new Error(
-            `A consulta do CNPJ respondeu em formato inesperado: ${rawText.slice(
-              0,
-              220
-            )}`
-          );
-        }
-      }
-
-      if (!response.ok || !parsed?.success) {
-        const attemptsText =
-          parsed?.attempts && parsed.attempts.length > 0
-            ? parsed.attempts
-                .map(
-                  (item) => `${item.source} (${item.status}): ${item.message}`
-                )
-                .join(" | ")
-            : "";
-
-        setLookupMessage(
-          parsed?.message || "Não foi possível consultar o CNPJ informado."
-        );
-        setLookupDetails(attemptsText);
-        return;
-      }
-
-      applyLookupData(parsed.data);
-      setLookupSource(
-        parsed.fallback_from
-          ? `${parsed.source} (fallback após ${parsed.fallback_from})`
-          : parsed.source || ""
-      );
-      setLookupMessage(parsed.message || "CNPJ consultado com sucesso.");
-      setLookupDetails(
-        "Dados preenchidos automaticamente. Você ainda pode editar tudo."
-      );
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Erro inesperado ao consultar CNPJ.";
-      setLookupMessage(message);
-      setLookupDetails("");
+      const acessoEmpresa = window.localStorage.getItem("empresa_autorizada");
+      setAutorizado(acessoEmpresa === "true");
+    } catch {
+      setAutorizado(false);
     } finally {
-      setLookupLoading(false);
+      setVerificandoAcesso(false);
     }
+  }, []);
+
+  function updateField<K extends keyof FormState>(field: K, value: FormState[K]) {
+    setForm((current) => ({ ...current, [field]: value }));
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  const validacao = useMemo(() => {
+    if (!form.nome_fantasia.trim()) return "Informe o nome fantasia / empresa.";
+    if (onlyDigits(form.cnpj).length !== 14) return "Informe um CNPJ válido.";
+    if (!form.responsavel_comercial.trim()) return "Informe o responsável comercial.";
+    if (onlyDigits(form.whatsapp).length < 10) return "Informe um WhatsApp válido.";
+    if (!isValidEmail(form.email_principal.trim())) return "Informe um e-mail válido.";
+    if (!form.cidade.trim()) return "Informe a cidade.";
+    if (!form.estado.trim()) return "Selecione o estado.";
+    if (!form.aceite_nome.trim()) return "Informe o nome do responsável pelo aceite.";
+    if (onlyDigits(form.aceite_documento).length < 11) return "Informe CPF ou CNPJ válido no aceite.";
+    if (!form.aceite_concordo) return "É obrigatório aceitar os termos comerciais da plataforma.";
+    return "";
+  }, [form]);
+
+  async function salvarEmpresa() {
+    setErro("");
+    setMensagem("");
+
+    if (validacao) {
+      setErro(validacao);
+      return;
+    }
+
+    setSubmitting(true);
 
     try {
-      setSaving(true);
-      setErrorMessage("");
-      setSuccessMessage("");
-
       const payload = {
-        ...formData,
-        cnpj: onlyDigits(formData.cnpj),
-        commercial_contact_cpf: onlyDigits(formData.commercial_contact_cpf),
-        zip_code: onlyDigits(formData.zip_code),
+        tipo_empresa: form.tipo_empresa,
+        cnpj: onlyDigits(form.cnpj),
+        razao_social: form.razao_social.trim() || null,
+        nome_fantasia: form.nome_fantasia.trim(),
+        inscricao_estadual: form.inscricao_estadual.trim() || null,
+        responsavel_comercial: form.responsavel_comercial.trim(),
+        cpf_responsavel: onlyDigits(form.cpf_responsavel) || null,
+        whatsapp: onlyDigits(form.whatsapp),
+        email_principal: form.email_principal.trim(),
+        cidade: form.cidade.trim(),
+        estado: form.estado.trim(),
+        accepted_terms: form.aceite_concordo,
+        accepted_at: new Date().toISOString(),
+        accepted_name: form.aceite_nome.trim(),
+        accepted_document: onlyDigits(form.aceite_documento),
+        accepted_term_version: "v1_comissao_plataforma",
       };
 
       const response = await fetch("/api/companies", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Accept: "application/json, text/plain, */*",
         },
         body: JSON.stringify(payload),
       });
 
-      const rawText = await response.text();
-      let parsed: SaveCompanyResponse | null = null;
+      const result = await response.json();
 
-      if (rawText.trim()) {
-        try {
-          parsed = JSON.parse(rawText) as SaveCompanyResponse;
-        } catch {
-          throw new Error(
-            `A API respondeu em formato inesperado: ${rawText.slice(0, 220)}`
-          );
-        }
-      }
-
-      if (!response.ok || !parsed?.success) {
+      if (!response.ok || !result?.success) {
         throw new Error(
-          parsed?.message ||
-            parsed?.error ||
-            "Não foi possível salvar a empresa."
+          result?.message || "Não foi possível salvar a empresa neste momento."
         );
       }
 
-      setSuccessMessage(parsed.message || "Empresa salva com sucesso.");
-      setErrorMessage("");
-      setLookupMessage("");
-      setLookupDetails("");
-      setLookupSource("");
-      setFormData(initialFormData);
-    } catch (error) {
+      setMensagem(
+        "Empresa cadastrada com sucesso. O aceite comercial da plataforma foi registrado."
+      );
+
+      setForm({
+        tipo_empresa: "Locadora",
+        cnpj: "",
+        razao_social: "",
+        nome_fantasia: "",
+        inscricao_estadual: "",
+        responsavel_comercial: "",
+        cpf_responsavel: "",
+        whatsapp: "",
+        email_principal: "",
+        cidade: "",
+        estado: "MG",
+        aceite_nome: "",
+        aceite_documento: "",
+        aceite_concordo: false,
+      });
+    } catch (err) {
       const message =
-        error instanceof Error
-          ? error.message
-          : "Erro inesperado ao salvar empresa.";
-      setErrorMessage(message);
-      setSuccessMessage("");
+        err instanceof Error
+          ? err.message
+          : "Erro ao salvar empresa.";
+      setErro(message);
     } finally {
-      setSaving(false);
+      setSubmitting(false);
     }
   }
 
+  if (verificandoAcesso) {
+    return (
+      <main className="min-h-screen bg-[linear-gradient(180deg,#eef8ff_0%,#f6fbff_42%,#ffffff_100%)] text-slate-900">
+        <div className="mx-auto flex min-h-screen max-w-4xl items-center justify-center px-4">
+          <div className="rounded-[28px] border border-white/70 bg-white/90 px-8 py-10 text-center shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
+            <p className="text-sm font-semibold uppercase tracking-[0.22em] text-cyan-700">
+              Verificando acesso
+            </p>
+            <h1 className="mt-3 text-3xl font-black text-slate-950">
+              Carregando área empresarial
+            </h1>
+            <p className="mt-3 text-sm leading-7 text-slate-600">
+              Conferindo se esta sessão possui liberação para visualizar a área restrita.
+            </p>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (!autorizado) {
+    return <AreaRestritaBloqueada />;
+  }
+
   return (
-    <main className="min-h-screen bg-[linear-gradient(180deg,#eef8ff_0%,#f7fbff_45%,#ffffff_100%)] text-slate-900">
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute left-[-120px] top-[-120px] h-[320px] w-[320px] rounded-full bg-cyan-300/35 blur-3xl" />
-        <div className="absolute right-[-80px] top-[20px] h-[280px] w-[280px] rounded-full bg-sky-300/35 blur-3xl" />
-        <div className="absolute left-[25%] top-[220px] h-[240px] w-[240px] rounded-full bg-blue-200/30 blur-3xl" />
-      </div>
+    <main className="min-h-screen bg-[linear-gradient(180deg,#eef8ff_0%,#f6fbff_42%,#ffffff_100%)] text-slate-900">
+      <section className="relative overflow-hidden border-b border-sky-100">
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute left-[-120px] top-[-140px] h-[320px] w-[320px] rounded-full bg-cyan-300/25 blur-3xl" />
+          <div className="absolute right-[-80px] top-[10px] h-[260px] w-[260px] rounded-full bg-sky-300/30 blur-3xl" />
+          <div className="absolute bottom-[-120px] left-[18%] h-[260px] w-[260px] rounded-full bg-blue-200/30 blur-3xl" />
+        </div>
 
-      <section className="relative mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="overflow-hidden rounded-[32px] border border-cyan-100 bg-white/88 shadow-[0_20px_70px_rgba(14,30,37,0.10)] backdrop-blur">
-          <div className="border-b border-cyan-100 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.22),transparent_30%),radial-gradient(circle_at_right,rgba(96,165,250,0.20),transparent_24%),linear-gradient(135deg,#f0fbff_0%,#edf7ff_55%,#f9fdff_100%)] px-6 py-7 sm:px-8">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-              <div className="max-w-3xl">
-                <div className="mb-3 inline-flex items-center rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.28em] text-cyan-700">
-                  Aurora IA
-                </div>
-
-                <h1 className="text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">
-                  Cadastrar empresa
-                </h1>
-
-                <p className="mt-2 text-lg font-semibold text-cyan-700">
-                  Base comercial completa • Seminovos Locadoras
-                </p>
-
-                <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600 sm:text-base">
-                  Cadastro empresarial com leitura automática por CNPJ e edição
-                  total depois do preenchimento. Sistema em constante atualização
-                  e pode haver momentos de instabilidade durante melhorias.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap gap-3">
-                <Link
-                  href="/"
-                  className="inline-flex items-center justify-center rounded-2xl border border-cyan-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-cyan-300 hover:bg-cyan-50"
-                >
-                  Voltar para Home
-                </Link>
-
-                <Link
-                  href="/seminovos-locadoras/empresas"
-                  className="inline-flex items-center justify-center rounded-2xl bg-cyan-500 px-4 py-3 text-sm font-black text-white transition hover:scale-[1.01] hover:bg-cyan-600"
-                >
-                  Ver empresas
-                </Link>
-              </div>
-            </div>
+        <div className="relative mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
+          <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-cyan-700 shadow-sm backdrop-blur">
+            Seminovos Locadoras • Cadastro empresarial restrito
           </div>
 
-          <form onSubmit={handleSubmit} className="p-6 sm:p-8">
-            <div className="grid gap-6">
-              <section className="rounded-[28px] border border-cyan-100 bg-white/92 p-6 shadow-[0_18px_50px_rgba(14,30,37,0.08)]">
-                <h2 className="text-xl font-black text-slate-900">
-                  Dados principais da empresa
-                </h2>
-                <p className="mt-2 text-sm text-slate-500">
-                  Agora essa tela salva de verdade no Supabase e já pode buscar
-                  dados por CNPJ antes de salvar.
-                </p>
+          <div className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr]">
+            <div>
+              <h1 className="text-4xl font-black tracking-[-0.03em] text-slate-950 sm:text-5xl">
+                Cadastro empresarial com
+                <span className="block bg-[linear-gradient(90deg,#0f172a_0%,#0369a1_45%,#06b6d4_100%)] bg-clip-text text-transparent">
+                  aceite comercial protegido
+                </span>
+              </h1>
 
-                <div className="mt-5 grid gap-4 md:grid-cols-2">
-                  <Field label="Tipo de empresa">
-                    <select
-                      value={formData.company_type}
-                      onChange={(event) =>
-                        updateField("company_type", event.target.value)
-                      }
-                      className="w-full rounded-2xl border border-cyan-100 bg-[#f8fcff] px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-cyan-400 focus:bg-white"
-                    >
-                      <option value="locadora">Locadora</option>
-                      <option value="revenda">Revenda</option>
-                      <option value="concessionaria">Concessionária</option>
-                      <option value="lojista">Lojista</option>
-                    </select>
-                  </Field>
+              <p className="mt-5 max-w-3xl text-base leading-7 text-slate-600 sm:text-lg">
+                Área exclusiva para locadoras, vendedores, concessionárias, lojistas e empresas de repasse,
+                com termo comercial e proteção da comissão da plataforma.
+              </p>
 
-                  <Field label="CNPJ">
-                    <div className="flex flex-col gap-3 sm:flex-row">
-                      <input
-                        value={formData.cnpj}
-                        onChange={(event) =>
-                          updateField("cnpj", formatCnpj(event.target.value))
-                        }
-                        placeholder="Ex.: 00.000.000/0001-00"
-                        className="w-full rounded-2xl border border-cyan-100 bg-[#f8fcff] px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-cyan-400 focus:bg-white"
-                      />
-
-                      <button
-                        type="button"
-                        onClick={() => void handleLookupCnpj()}
-                        disabled={!canLookupCnpj || lookupLoading}
-                        className="inline-flex min-w-[190px] items-center justify-center rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-bold text-cyan-700 transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {lookupLoading ? "Buscando..." : "Buscar na Receita"}
-                      </button>
-                    </div>
-
-                    {lookupMessage ? (
-                      <div className="mt-3 rounded-2xl border border-cyan-100 bg-cyan-50 px-4 py-3 text-sm text-cyan-800">
-                        <div className="font-bold">{lookupMessage}</div>
-                        {lookupSource ? (
-                          <div className="mt-1 text-cyan-700">
-                            Fonte: {lookupSource}
-                          </div>
-                        ) : null}
-                        {lookupDetails ? (
-                          <div className="mt-1 text-cyan-700">
-                            {lookupDetails}
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </Field>
-
-                  <Field label="Razão social">
-                    <input
-                      value={formData.corporate_name}
-                      onChange={(event) =>
-                        updateField("corporate_name", event.target.value)
-                      }
-                      placeholder="Ex.: Seminovos Brasil Frotas Ltda"
-                      className="input-base"
-                    />
-                  </Field>
-
-                  <Field label="Nome fantasia">
-                    <input
-                      value={formData.trade_name}
-                      onChange={(event) =>
-                        updateField("trade_name", event.target.value)
-                      }
-                      placeholder="Ex.: Aurora Seminovos"
-                      className="input-base"
-                    />
-                  </Field>
-
-                  <Field label="Inscrição estadual">
-                    <input
-                      value={formData.state_registration}
-                      onChange={(event) =>
-                        updateField("state_registration", event.target.value)
-                      }
-                      placeholder="Ex.: 123456789"
-                      className="input-base"
-                    />
-                  </Field>
-
-                  <Field label="Responsável comercial">
-                    <input
-                      value={formData.commercial_contact_name}
-                      onChange={(event) =>
-                        updateField("commercial_contact_name", event.target.value)
-                      }
-                      placeholder="Ex.: Ricardo Leonardo Moreira"
-                      className="input-base"
-                    />
-                  </Field>
-
-                  <Field label="CPF do responsável">
-                    <input
-                      value={formData.commercial_contact_cpf}
-                      onChange={(event) =>
-                        updateField(
-                          "commercial_contact_cpf",
-                          formatCpf(event.target.value)
-                        )
-                      }
-                      placeholder="Ex.: 000.000.000-00"
-                      className="input-base"
-                    />
-                  </Field>
-
-                  <Field label="WhatsApp comercial">
-                    <input
-                      value={formData.commercial_whatsapp}
-                      onChange={(event) =>
-                        updateField("commercial_whatsapp", event.target.value)
-                      }
-                      placeholder="Ex.: (31) 99999-9999"
-                      className="input-base"
-                    />
-                  </Field>
-
-                  <Field label="E-mail principal">
-                    <input
-                      type="email"
-                      value={formData.primary_email}
-                      onChange={(event) =>
-                        updateField("primary_email", event.target.value)
-                      }
-                      placeholder="Ex.: comercial@empresa.com.br"
-                      className="input-base"
-                    />
-                  </Field>
-
-                  <Field label="E-mail adicional 1">
-                    <input
-                      type="email"
-                      value={formData.secondary_email_1}
-                      onChange={(event) =>
-                        updateField("secondary_email_1", event.target.value)
-                      }
-                      placeholder="Ex.: financeiro@empresa.com.br"
-                      className="input-base"
-                    />
-                  </Field>
-
-                  <Field label="E-mail adicional 2">
-                    <input
-                      type="email"
-                      value={formData.secondary_email_2}
-                      onChange={(event) =>
-                        updateField("secondary_email_2", event.target.value)
-                      }
-                      placeholder="Ex.: frota@empresa.com.br"
-                      className="input-base"
-                    />
-                  </Field>
-
-                  <Field label="E-mail adicional 3">
-                    <input
-                      type="email"
-                      value={formData.secondary_email_3}
-                      onChange={(event) =>
-                        updateField("secondary_email_3", event.target.value)
-                      }
-                      placeholder="Ex.: vendas@empresa.com.br"
-                      className="input-base"
-                    />
-                  </Field>
-
-                  <Field label="E-mail adicional 4">
-                    <input
-                      type="email"
-                      value={formData.secondary_email_4}
-                      onChange={(event) =>
-                        updateField("secondary_email_4", event.target.value)
-                      }
-                      placeholder="Ex.: contratos@empresa.com.br"
-                      className="input-base"
-                    />
-                  </Field>
-
-                  <Field label="E-mail adicional 5">
-                    <input
-                      type="email"
-                      value={formData.secondary_email_5}
-                      onChange={(event) =>
-                        updateField("secondary_email_5", event.target.value)
-                      }
-                      placeholder="Ex.: suporte@empresa.com.br"
-                      className="input-base"
-                    />
-                  </Field>
-
-                  <Field label="Site">
-                    <input
-                      value={formData.website}
-                      onChange={(event) =>
-                        updateField("website", event.target.value)
-                      }
-                      placeholder="Ex.: https://empresa.com.br"
-                      className="input-base"
-                    />
-                  </Field>
-                </div>
-              </section>
-
-              <section className="rounded-[28px] border border-cyan-100 bg-white/92 p-6 shadow-[0_18px_50px_rgba(14,30,37,0.08)]">
-                <h2 className="text-xl font-black text-slate-900">
-                  Endereço e descrição pública
-                </h2>
-
-                <div className="mt-5 grid gap-4 md:grid-cols-2">
-                  <Field label="Cidade">
-                    <input
-                      value={formData.city}
-                      onChange={(event) => updateField("city", event.target.value)}
-                      placeholder="Ex.: Belo Horizonte"
-                      className="input-base"
-                    />
-                  </Field>
-
-                  <Field label="Estado">
-                    <input
-                      value={formData.state}
-                      onChange={(event) => updateField("state", event.target.value)}
-                      placeholder="Ex.: MG"
-                      className="input-base"
-                    />
-                  </Field>
-
-                  <Field label="Endereço">
-                    <input
-                      value={formData.address}
-                      onChange={(event) =>
-                        updateField("address", event.target.value)
-                      }
-                      placeholder="Ex.: Rua Tebas"
-                      className="input-base"
-                    />
-                  </Field>
-
-                  <Field label="Número">
-                    <input
-                      value={formData.address_number}
-                      onChange={(event) =>
-                        updateField("address_number", event.target.value)
-                      }
-                      placeholder="Ex.: 223"
-                      className="input-base"
-                    />
-                  </Field>
-
-                  <Field label="Bairro">
-                    <input
-                      value={formData.neighborhood}
-                      onChange={(event) =>
-                        updateField("neighborhood", event.target.value)
-                      }
-                      placeholder="Ex.: Vera Cruz"
-                      className="input-base"
-                    />
-                  </Field>
-
-                  <Field label="CEP">
-                    <input
-                      value={formData.zip_code}
-                      onChange={(event) =>
-                        updateField("zip_code", formatCep(event.target.value))
-                      }
-                      placeholder="Ex.: 30285-300"
-                      className="input-base"
-                    />
-                  </Field>
-                </div>
-
-                <div className="mt-4">
-                  <Field label="Descrição pública">
-                    <textarea
-                      value={formData.public_description}
-                      onChange={(event) =>
-                        updateField("public_description", event.target.value)
-                      }
-                      placeholder="Descreva de forma comercial a empresa para exibição pública."
-                      rows={4}
-                      className="w-full rounded-2xl border border-cyan-100 bg-[#f8fcff] px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-cyan-400 focus:bg-white"
-                    />
-                  </Field>
-                </div>
-
-                <div className="mt-4">
-                  <Field label="Observações internas">
-                    <textarea
-                      value={formData.notes}
-                      onChange={(event) => updateField("notes", event.target.value)}
-                      placeholder="Observações internas, detalhes comerciais, anotações e ajustes."
-                      rows={5}
-                      className="w-full rounded-2xl border border-cyan-100 bg-[#f8fcff] px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-cyan-400 focus:bg-white"
-                    />
-                  </Field>
-                </div>
-              </section>
-
-              <section className="rounded-[28px] border border-cyan-100 bg-white/92 p-6 shadow-[0_18px_50px_rgba(14,30,37,0.08)]">
-                <h2 className="text-xl font-black text-slate-900">
-                  Configurações comerciais
-                </h2>
-
-                <div className="mt-5 grid gap-4 md:grid-cols-3">
-                  <ToggleCard
-                    title="Aceita contato por WhatsApp"
-                    checked={formData.accepts_whatsapp_contact}
-                    onChange={(checked) =>
-                      updateField("accepts_whatsapp_contact", checked)
-                    }
-                  />
-
-                  <ToggleCard
-                    title="Recebe leads"
-                    checked={formData.receives_leads}
-                    onChange={(checked) => updateField("receives_leads", checked)}
-                  />
-
-                  <ToggleCard
-                    title="Possui contrato modelo"
-                    checked={formData.has_contract_template}
-                    onChange={(checked) =>
-                      updateField("has_contract_template", checked)
-                    }
-                  />
-                </div>
-              </section>
-
-              {successMessage ? (
-                <div className="rounded-[24px] border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-semibold text-emerald-700">
-                  {successMessage}
-                </div>
-              ) : null}
-
-              {errorMessage ? (
-                <div className="rounded-[24px] border border-red-200 bg-red-50 px-5 py-4 text-sm font-semibold text-red-700">
-                  {errorMessage}
-                </div>
-              ) : null}
-
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="inline-flex items-center justify-center rounded-2xl bg-cyan-500 px-5 py-3 text-sm font-black text-white transition hover:scale-[1.01] hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {saving ? "Salvando..." : "Salvar empresa"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFormData(initialFormData);
-                    setSuccessMessage("");
-                    setErrorMessage("");
-                    setLookupMessage("");
-                    setLookupDetails("");
-                    setLookupSource("");
-                  }}
-                  className="inline-flex items-center justify-center rounded-2xl border border-cyan-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-cyan-300 hover:bg-cyan-50"
-                >
-                  Limpar formulário
-                </button>
+              <div className="mt-8 rounded-3xl border border-amber-100 bg-[linear-gradient(135deg,#fffdf4_0%,#ffffff_100%)] p-4 text-sm text-slate-600 shadow-sm">
+                <span className="font-semibold text-amber-700">Sistema em constante atualização:</span>{" "}
+                pode haver momentos de instabilidade durante melhorias, validações comerciais e novas integrações.
               </div>
             </div>
-          </form>
+
+            <div className="rounded-[28px] border border-white/70 bg-white/90 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-700">
+                Resguardo comercial
+              </p>
+              <h2 className="mt-2 text-2xl font-black text-slate-950">
+                Comissão protegida
+              </h2>
+
+              <div className="mt-5 space-y-3">
+                {COMISSOES.map((item) => (
+                  <div
+                    key={item.categoria}
+                    className="rounded-2xl border border-slate-100 bg-slate-50/80 p-4"
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-sm font-semibold text-slate-600">
+                        {item.categoria}
+                      </span>
+                      <span className="text-base font-black text-slate-950">
+                        {item.valor}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <p className="mt-4 text-sm leading-6 text-slate-500">
+                Este conteúdo é exibido apenas em ambiente restrito do vendedor/empresa para evitar
+                desintermediação e exposição pública da política comercial.
+              </p>
+            </div>
+          </div>
         </div>
       </section>
 
-      <style jsx global>{`
-        .input-base {
-          width: 100%;
-          border-radius: 1rem;
-          border: 1px solid #cfeff9;
-          background: #f8fcff;
-          padding: 0.75rem 1rem;
-          font-size: 0.875rem;
-          color: #0f172a;
-          outline: none;
-          transition: all 0.2s ease;
-        }
+      <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
+        <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-[0_16px_50px_rgba(15,23,42,0.06)] sm:p-8">
+            <div className="mb-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-700">
+                Dados da empresa
+              </p>
+              <h2 className="mt-2 text-3xl font-black tracking-[-0.02em] text-slate-950">
+                Cadastro principal
+              </h2>
+            </div>
 
-        .input-base:focus {
-          border-color: #22c7ee;
-          background: #ffffff;
-        }
-      `}</style>
-    </main>
-  );
-}
+            <div className="grid gap-5 md:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  Tipo de empresa
+                </label>
+                <select
+                  value={form.tipo_empresa}
+                  onChange={(e) => updateField("tipo_empresa", e.target.value)}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-cyan-400"
+                >
+                  <option>Locadora</option>
+                  <option>Concessionária</option>
+                  <option>Lojista</option>
+                  <option>Empresa de repasse</option>
+                  <option>Revenda</option>
+                </select>
+              </div>
 
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-2 block text-sm font-bold text-slate-700">
-        {label}
-      </span>
-      {children}
-    </label>
-  );
-}
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  CNPJ *
+                </label>
+                <input
+                  value={form.cnpj}
+                  onChange={(e) => updateField("cnpj", formatCnpj(e.target.value))}
+                  placeholder="00.000.000/0001-00"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-cyan-400"
+                />
+              </div>
 
-function ToggleCard({
-  title,
-  checked,
-  onChange,
-}: {
-  title: string;
-  checked: boolean;
-  onChange: (value: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => onChange(!checked)}
-      className={`rounded-[24px] border p-5 text-left transition ${
-        checked
-          ? "border-cyan-200 bg-cyan-50"
-          : "border-cyan-100 bg-[#fbfeff]"
-      }`}
-    >
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-sm font-black text-slate-900">{title}</div>
-          <div className="mt-1 text-sm text-slate-500">
-            {checked ? "Ativado" : "Desativado"}
+              <div className="md:col-span-2">
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  Razão social
+                </label>
+                <input
+                  value={form.razao_social}
+                  onChange={(e) => updateField("razao_social", e.target.value)}
+                  placeholder="Razão social da empresa"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-cyan-400"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  Nome fantasia / empresa *
+                </label>
+                <input
+                  value={form.nome_fantasia}
+                  onChange={(e) => updateField("nome_fantasia", e.target.value)}
+                  placeholder="Ex.: Aurora Frotas Premium"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-cyan-400"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  Inscrição estadual
+                </label>
+                <input
+                  value={form.inscricao_estadual}
+                  onChange={(e) => updateField("inscricao_estadual", e.target.value)}
+                  placeholder="Opcional"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-cyan-400"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  Responsável comercial *
+                </label>
+                <input
+                  value={form.responsavel_comercial}
+                  onChange={(e) => updateField("responsavel_comercial", e.target.value)}
+                  placeholder="Nome do responsável"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-cyan-400"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  CPF do responsável
+                </label>
+                <input
+                  value={form.cpf_responsavel}
+                  onChange={(e) => updateField("cpf_responsavel", formatCpf(e.target.value))}
+                  placeholder="000.000.000-00"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-cyan-400"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  WhatsApp *
+                </label>
+                <input
+                  value={form.whatsapp}
+                  onChange={(e) => updateField("whatsapp", formatPhone(e.target.value))}
+                  placeholder="(31) 99999-9999"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-cyan-400"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  E-mail principal *
+                </label>
+                <input
+                  value={form.email_principal}
+                  onChange={(e) => updateField("email_principal", e.target.value)}
+                  placeholder="contato@empresa.com.br"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-cyan-400"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  Cidade *
+                </label>
+                <input
+                  value={form.cidade}
+                  onChange={(e) => updateField("cidade", e.target.value)}
+                  placeholder="Ex.: Belo Horizonte"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-cyan-400"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  Estado *
+                </label>
+                <select
+                  value={form.estado}
+                  onChange={(e) => updateField("estado", e.target.value)}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-cyan-400"
+                >
+                  {ESTADOS.map((uf) => (
+                    <option key={uf} value={uf}>
+                      {uf}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {erro ? (
+              <div className="mt-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                {erro}
+              </div>
+            ) : null}
+
+            {mensagem ? (
+              <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                {mensagem}
+              </div>
+            ) : null}
+
+            <div className="mt-8 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={salvarEmpresa}
+                disabled={submitting}
+                className="inline-flex items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#0284c7_0%,#06b6d4_100%)] px-6 py-3 text-sm font-semibold text-white shadow-[0_18px_40px_rgba(2,132,199,0.28)] transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {submitting ? "Salvando..." : "Salvar empresa"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setMostrarTermo(true)}
+                className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-6 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+              >
+                Ver termos comerciais
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-[0_16px_50px_rgba(15,23,42,0.06)] sm:p-8">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-700">
+              Aceite obrigatório
+            </p>
+            <h2 className="mt-2 text-3xl font-black tracking-[-0.02em] text-slate-950">
+              Termo comercial digital
+            </h2>
+
+            <div className="mt-6 rounded-3xl border border-slate-200 bg-slate-50/80 p-5">
+              <p className="text-sm leading-7 text-slate-700">
+                Declaro que li, compreendi e estou de acordo com as regras comerciais da plataforma
+                <span className="font-semibold text-slate-950"> seminovoslocadoras.com.br</span>,
+                inclusive no que se refere à comissão sobre vendas originadas pela plataforma,
+                vedação de fechamento por fora e possibilidade de bloqueio em caso de descumprimento.
+              </p>
+            </div>
+
+            <div className="mt-6 grid gap-5">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  Nome do responsável pelo aceite *
+                </label>
+                <input
+                  value={form.aceite_nome}
+                  onChange={(e) => updateField("aceite_nome", e.target.value)}
+                  placeholder="Nome completo"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-cyan-400"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  CPF ou CNPJ do aceite *
+                </label>
+                <input
+                  value={form.aceite_documento}
+                  onChange={(e) => {
+                    const digits = onlyDigits(e.target.value);
+                    updateField(
+                      "aceite_documento",
+                      digits.length > 11 ? formatCnpj(digits) : formatCpf(digits)
+                    );
+                  }}
+                  placeholder="CPF ou CNPJ"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-cyan-400"
+                />
+              </div>
+
+              <label className="flex items-start gap-3 rounded-2xl border border-cyan-100 bg-cyan-50/60 p-4">
+                <input
+                  type="checkbox"
+                  checked={form.aceite_concordo}
+                  onChange={(e) => updateField("aceite_concordo", e.target.checked)}
+                  className="mt-1 h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
+                />
+                <span className="text-sm leading-6 text-slate-700">
+                  Li e aceito os termos comerciais da plataforma, reconheço a comissão sobre vendas
+                  originadas pelo ambiente e concordo com a vedação de negociação direta para evitar
+                  a comissão da plataforma.
+                </span>
+              </label>
+
+              <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                Sem este aceite, o cadastro da empresa não pode ser concluído.
+              </div>
+            </div>
           </div>
         </div>
+      </section>
 
-        <div
-          className={`h-7 w-12 rounded-full border transition ${
-            checked
-              ? "border-cyan-400 bg-cyan-500"
-              : "border-slate-200 bg-slate-200"
-          }`}
-        >
-          <div
-            className={`mt-[2px] h-5 w-5 rounded-full bg-white shadow transition ${
-              checked ? "ml-6" : "ml-1"
-            }`}
-          />
+      {mostrarTermo ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4">
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-[32px] border border-white/20 bg-white p-6 shadow-[0_28px_80px_rgba(15,23,42,0.28)] sm:p-8">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-700">
+                  Termos comerciais
+                </p>
+                <h3 className="mt-2 text-3xl font-black tracking-[-0.02em] text-slate-950">
+                  Aceite comercial da plataforma
+                </h3>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setMostrarTermo(false)}
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                Fechar
+              </button>
+            </div>
+
+            <div className="mt-6 space-y-5 text-sm leading-7 text-slate-700">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                <strong className="text-slate-950">1. Origem dos negócios.</strong>{" "}
+                Todas as vendas originadas por leads, contatos, anúncios, formulários, visitas ou
+                interações realizadas por meio da plataforma seminovoslocadoras.com.br são consideradas
+                vendas originadas pela plataforma.
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                <strong className="text-slate-950">2. Comissão comercial.</strong>{" "}
+                O vendedor reconhece que as vendas originadas pela plataforma estão sujeitas à comissão:
+                <ul className="mt-3 list-disc pl-5">
+                  <li>Passeio: R$ 1.000,00</li>
+                  <li>Intermediário: R$ 1.500,00</li>
+                  <li>4x4: R$ 2.000,00</li>
+                  <li>Grande porte: R$ 3.000,00</li>
+                </ul>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                <strong className="text-slate-950">3. Vedação de desintermediação.</strong>{" "}
+                É vedado negociar diretamente com clientes originados pela plataforma com o objetivo
+                de evitar o pagamento da comissão.
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                <strong className="text-slate-950">4. Consequências.</strong>{" "}
+                Em caso de descumprimento, a plataforma poderá bloquear o cadastro, restringir o acesso
+                e cobrar a comissão comercial devida, sem prejuízo de outras medidas cabíveis.
+              </div>
+
+              <div className="rounded-2xl border border-cyan-100 bg-cyan-50/70 p-4">
+                <strong className="text-slate-950">5. Aceite digital.</strong>{" "}
+                O aceite eletrônico com nome e CPF/CNPJ do responsável passa a compor o registro
+                comercial do cadastro empresarial.
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-    </button>
+      ) : null}
+    </main>
   );
 }
