@@ -1,817 +1,776 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
-type CompanyRow = {
-  id: string;
-  slug: string | null;
-  company_type: string | null;
-  cnpj: string | null;
-  razao_social: string | null;
-  nome_fantasia: string | null;
-  inscricao_estadual: string | null;
-  responsavel: string | null;
-  cpf_responsavel: string | null;
-  whatsapp: string | null;
-  email_principal: string | null;
-  email_secundario_1: string | null;
-  email_secundario_2: string | null;
-  email_secundario_3: string | null;
-  email_secundario_4: string | null;
-  email_secundario_5: string | null;
-  site: string | null;
-  cidade: string | null;
-  estado: string | null;
-  endereco: string | null;
-  numero: string | null;
-  bairro: string | null;
-  cep: string | null;
-  descricao_publica: string | null;
-  aceita_contato_whatsapp: boolean | null;
-  recebe_leads: boolean | null;
-  possui_contrato_modelo: boolean | null;
-  logo_file_name: string | null;
-  contract_file_name: string | null;
-  observacoes: string | null;
-  maintenance_fee_monthly: number | null;
-  active: boolean | null;
-  created_at: string | null;
-  updated_at: string | null;
-};
+function onlyDigits(value: string) {
+  return String(value || "").replace(/\D/g, "");
+}
 
-type CompanyApiItem = {
-  id: string;
-  slug?: string | null;
-  company_type?: string | null;
-  cnpj?: string | null;
-  corporate_name?: string | null;
-  trade_name?: string | null;
-  state_registration?: string | null;
-  commercial_contact_name?: string | null;
-  commercial_contact_cpf?: string | null;
-  commercial_whatsapp?: string | null;
-  primary_email?: string | null;
-  secondary_email_1?: string | null;
-  secondary_email_2?: string | null;
-  secondary_email_3?: string | null;
-  secondary_email_4?: string | null;
-  secondary_email_5?: string | null;
-  website?: string | null;
-  instagram?: string | null;
-  city?: string | null;
-  state?: string | null;
-  address?: string | null;
-  address_number?: string | null;
-  neighborhood?: string | null;
-  zip_code?: string | null;
-  public_description?: string | null;
-  accepts_whatsapp_contact?: boolean | null;
-  receives_leads?: boolean | null;
-  has_contract_template?: boolean | null;
-  logo_file_name?: string | null;
-  contract_file_name?: string | null;
-  notes?: string | null;
-  maintenance_fee_monthly?: number | null;
-  active?: boolean | null;
-  created_at?: string | null;
-  updated_at?: string | null;
-};
+function isValidEmail(value: string) {
+  return /\S+@\S+\.\S+/.test(String(value || "").trim());
+}
 
-type RequestBody = Record<string, unknown>;
+function jsonError(
+  message: string,
+  status = 400,
+  extra?: Record<string, unknown>
+) {
+  return NextResponse.json(
+    {
+      success: false,
+      message,
+      ...(extra || {}),
+    },
+    { status }
+  );
+}
 
-type DuplicateCheckRow = {
-  id: string;
-  cnpj: string | null;
-  nome_fantasia: string | null;
-  razao_social: string | null;
-};
-
-const STORAGE_BUCKET =
-  process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET || "aurora-images";
-
-function getSupabaseServerClient() {
-  const supabaseUrl =
-    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-
-  const supabaseKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl) {
-    throw new Error("SUPABASE_URL não configurada.");
+function getAdminClient() {
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    return null;
   }
 
-  if (!supabaseKey) {
-    throw new Error(
-      "SUPABASE_SERVICE_ROLE_KEY ou NEXT_PUBLIC_SUPABASE_ANON_KEY não configurada."
-    );
-  }
-
-  return createClient(supabaseUrl, supabaseKey, {
+  return createClient(supabaseUrl, supabaseServiceRoleKey, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
-      detectSessionInUrl: false,
     },
   });
 }
 
-function cleanString(value: unknown) {
-  if (typeof value !== "string") return null;
-  const normalized = value.trim();
-  return normalized.length > 0 ? normalized : null;
-}
-
-function cleanBoolean(value: unknown, fallback = false) {
-  if (typeof value === "boolean") return value;
-
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-
-    if (normalized === "true") return true;
-    if (normalized === "false") return false;
+function getAuthClient() {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return null;
   }
 
-  return fallback;
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  });
 }
 
-function cleanNumber(value: unknown, fallback = 49.9) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-function onlyDigits(value: string | null) {
-  if (!value) return null;
-  const digits = value.replace(/\D/g, "");
-  return digits.length > 0 ? digits : null;
-}
-
-function firstWhatsapp(value: string | null) {
-  if (!value) return null;
-
-  const parts = value
-    .split(/[\/|,;]/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-
-  const first = parts[0] ?? value;
-  return onlyDigits(first);
-}
-
-function slugifyPart(value?: string | null) {
-  return (value || "")
+function buildSlugFromName(name: string, city: string, state: string, id: string) {
+  const base = `${name || "empresa"} ${city || ""} ${state || ""}`
+    .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .replace(/-{2,}/g, "-");
+    .replace(/--+/g, "-");
+
+  const shortId = String(id || "").slice(0, 8);
+  return `${base || "empresa"}-${shortId}`.replace(/--+/g, "-");
 }
 
-function buildCompanySlugFromValues(values: {
-  id: string;
-  trade_name?: string | null;
-  corporate_name?: string | null;
-  primary_email?: string | null;
-  cnpj?: string | null;
-  city?: string | null;
-  state?: string | null;
-}) {
-  const name = slugifyPart(
-    values.trade_name ||
-      values.corporate_name ||
-      values.primary_email ||
-      values.cnpj ||
-      "empresa"
-  );
+function normalizeRow(row: Record<string, any>) {
+  const id = row?.id ?? null;
 
-  const city = slugifyPart(values.city);
-  const state = slugifyPart(values.state);
-  const shortId = (values.id || "").split("-")[0] || "empresa";
+  const cnpj = row?.cnpj ?? "";
+  const corporate_name = row?.razao_social ?? "";
+  const trade_name = row?.nome_fantasia ?? "";
+  const state_registration = row?.inscricao_estadual ?? "";
+  const commercial_contact_name = row?.responsavel ?? "";
+  const commercial_contact_cpf = row?.cpf_responsavel ?? "";
+  const commercial_whatsapp = row?.whatsapp ?? "";
+  const primary_email = row?.email_principal ?? "";
 
-  return [name, city, state, shortId].filter(Boolean).join("-");
-}
+  const city = row?.cidade ?? "";
+  const state = row?.estado ?? "";
+  const address = row?.endereco ?? "";
+  const address_number = row?.numero ?? "";
+  const neighborhood = row?.bairro ?? "";
+  const zip_code = row?.cep ?? "";
 
-function mapRowToApiItem(row: CompanyRow): CompanyApiItem {
-  return {
-    id: row.id,
-    slug: row.slug,
-    company_type: row.company_type,
-    cnpj: row.cnpj,
-    corporate_name: row.razao_social,
-    trade_name: row.nome_fantasia,
-    state_registration: row.inscricao_estadual,
-    commercial_contact_name: row.responsavel,
-    commercial_contact_cpf: row.cpf_responsavel,
-    commercial_whatsapp: row.whatsapp,
-    primary_email: row.email_principal,
-    secondary_email_1: row.email_secundario_1,
-    secondary_email_2: row.email_secundario_2,
-    secondary_email_3: row.email_secundario_3,
-    secondary_email_4: row.email_secundario_4,
-    secondary_email_5: row.email_secundario_5,
-    website: row.site,
-    instagram: null,
-    city: row.cidade,
-    state: row.estado,
-    address: row.endereco,
-    address_number: row.numero,
-    neighborhood: row.bairro,
-    zip_code: row.cep,
-    public_description: row.descricao_publica,
-    accepts_whatsapp_contact: row.aceita_contato_whatsapp,
-    receives_leads: row.recebe_leads,
-    has_contract_template: row.possui_contrato_modelo,
-    logo_file_name: row.logo_file_name,
-    contract_file_name: row.contract_file_name,
-    notes: row.observacoes,
-    maintenance_fee_monthly: row.maintenance_fee_monthly,
-    active: row.active,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-  };
-}
+  const public_description = row?.descricao_publica ?? "";
+  const notes = row?.observacoes ?? "";
+  const website = row?.site ?? "";
+  const logo_file_name = row?.logo_file_name ?? "";
+  const contract_file_name = row?.contract_file_name ?? "";
 
-function normalizePayload(body: RequestBody, forcedId?: string) {
-  const normalized = {
-    company_type: cleanString(body.company_type ?? body.companyType),
-    cnpj: onlyDigits(cleanString(body.cnpj)),
-    razao_social: cleanString(
-      body.corporate_name ??
-        body.corporateName ??
-        body.razao_social ??
-        body.razaoSocial
-    ),
-    nome_fantasia: cleanString(
-      body.trade_name ??
-        body.tradeName ??
-        body.nome_fantasia ??
-        body.nomeFantasia
-    ),
-    inscricao_estadual: cleanString(
-      body.state_registration ??
-        body.stateRegistration ??
-        body.inscricao_estadual ??
-        body.inscricaoEstadual
-    ),
-    responsavel: cleanString(
-      body.commercial_contact_name ??
-        body.commercialContactName ??
-        body.responsavel
-    ),
-    cpf_responsavel: onlyDigits(
-      cleanString(
-        body.commercial_contact_cpf ??
-          body.commercialContactCpf ??
-          body.cpf_responsavel ??
-          body.cpfResponsavel
-      )
-    ),
-    whatsapp: firstWhatsapp(
-      cleanString(
-        body.commercial_whatsapp ??
-          body.commercialWhatsapp ??
-          body.whatsapp
-      )
-    ),
-    email_principal: cleanString(
-      body.primary_email ??
-        body.primaryEmail ??
-        body.email_principal ??
-        body.emailPrincipal
-    ),
-    email_secundario_1: cleanString(
-      body.secondary_email_1 ??
-        body.secondaryEmail1 ??
-        body.email_secundario_1 ??
-        body.emailSecundario1
-    ),
-    email_secundario_2: cleanString(
-      body.secondary_email_2 ??
-        body.secondaryEmail2 ??
-        body.email_secundario_2 ??
-        body.emailSecundario2
-    ),
-    email_secundario_3: cleanString(
-      body.secondary_email_3 ??
-        body.secondaryEmail3 ??
-        body.email_secundario_3 ??
-        body.emailSecundario3
-    ),
-    email_secundario_4: cleanString(
-      body.secondary_email_4 ??
-        body.secondaryEmail4 ??
-        body.email_secundario_4 ??
-        body.emailSecundario4
-    ),
-    email_secundario_5: cleanString(
-      body.secondary_email_5 ??
-        body.secondaryEmail5 ??
-        body.email_secundario_5 ??
-        body.emailSecundario5
-    ),
-    site: cleanString(body.website ?? body.site),
-    cidade: cleanString(body.city ?? body.cidade),
-    estado: cleanString(body.state ?? body.estado),
-    endereco: cleanString(body.address ?? body.endereco),
-    numero: cleanString(
-      body.address_number ?? body.addressNumber ?? body.numero
-    ),
-    bairro: cleanString(body.neighborhood ?? body.bairro),
-    cep: onlyDigits(cleanString(body.zip_code ?? body.zipCode ?? body.cep)),
-    descricao_publica: cleanString(
-      body.public_description ??
-        body.publicDescription ??
-        body.descricao_publica ??
-        body.descricaoPublica
-    ),
-    aceita_contato_whatsapp: cleanBoolean(
-      body.accepts_whatsapp_contact ??
-        body.acceptsWhatsappContact ??
-        body.aceita_contato_whatsapp ??
-        body.aceitaContatoWhatsapp,
-      true
-    ),
-    recebe_leads: cleanBoolean(
-      body.receives_leads ?? body.recebe_leads ?? body.recebeLeads,
-      true
-    ),
-    possui_contrato_modelo: cleanBoolean(
-      body.has_contract_template ??
-        body.hasContractTemplate ??
-        body.possui_contrato_modelo ??
-        body.possuiContratoModelo,
-      false
-    ),
-    logo_file_name: cleanString(body.logo_file_name ?? body.logoFileName),
-    contract_file_name: cleanString(
-      body.contract_file_name ?? body.contractFileName
-    ),
-    observacoes: cleanString(body.notes ?? body.observacoes),
-    maintenance_fee_monthly: cleanNumber(
-      body.maintenance_fee_monthly ?? body.maintenanceFeeMonthly,
-      49.9
-    ),
-    active: cleanBoolean(body.active, true),
-  };
-
-  const slugFromBody = cleanString(body.slug);
-
-  const effectiveId =
-    forcedId || cleanString(body.id) || crypto.randomUUID();
+  const accepts_whatsapp_contact = row?.aceita_contato_whatsapp ?? false;
+  const receives_leads = row?.recebe_leads ?? false;
+  const has_contract_template = row?.possui_contrato_modelo ?? false;
+  const maintenance_fee_monthly = row?.maintenance_fee_monthly ?? null;
+  const active = row?.active ?? true;
+  const company_type = row?.company_type ?? "locadora";
 
   const slug =
-    slugFromBody ||
-    buildCompanySlugFromValues({
-      id: effectiveId,
-      trade_name: normalized.nome_fantasia,
-      corporate_name: normalized.razao_social,
-      primary_email: normalized.email_principal,
-      cnpj: normalized.cnpj,
-      city: normalized.cidade,
-      state: normalized.estado,
-    });
+    row?.slug ||
+    buildSlugFromName(
+      trade_name || corporate_name,
+      city,
+      state,
+      String(id || "")
+    );
 
   return {
-    ...normalized,
+    id,
+    cnpj,
+    corporate_name,
+    trade_name,
+    state_registration,
+    commercial_contact_name,
+    commercial_contact_cpf,
+    commercial_whatsapp,
+    primary_email,
+    secondary_email_1: row?.email_secundario_1 ?? "",
+    secondary_email_2: row?.email_secundario_2 ?? "",
+    secondary_email_3: row?.email_secundario_3 ?? "",
+    secondary_email_4: row?.email_secundario_4 ?? "",
+    secondary_email_5: row?.email_secundario_5 ?? "",
+    website,
+    city,
+    state,
+    address,
+    address_number,
+    neighborhood,
+    zip_code,
+    public_description,
+    notes,
+    logo_file_name,
+    contract_file_name,
+    accepts_whatsapp_contact,
+    receives_leads,
+    has_contract_template,
+    maintenance_fee_monthly,
+    active,
+    company_type,
     slug,
+    created_at: row?.created_at ?? null,
+    updated_at: row?.updated_at ?? null,
+    raw: row,
   };
 }
 
-const baseSelect = `
-  id,
-  slug,
-  company_type,
-  cnpj,
-  razao_social,
-  nome_fantasia,
-  inscricao_estadual,
-  responsavel,
-  cpf_responsavel,
-  whatsapp,
-  email_principal,
-  email_secundario_1,
-  email_secundario_2,
-  email_secundario_3,
-  email_secundario_4,
-  email_secundario_5,
-  site,
-  cidade,
-  estado,
-  endereco,
-  numero,
-  bairro,
-  cep,
-  descricao_publica,
-  aceita_contato_whatsapp,
-  recebe_leads,
-  possui_contrato_modelo,
-  logo_file_name,
-  contract_file_name,
-  observacoes,
-  maintenance_fee_monthly,
-  active,
-  created_at,
-  updated_at
-`;
+function buildHaystack(item: Record<string, any>) {
+  return Object.values(item)
+    .flatMap((value) => {
+      if (value === null || value === undefined) {
+        return [];
+      }
 
-export async function GET() {
+      if (typeof value === "object") {
+        try {
+          return [JSON.stringify(value)];
+        } catch {
+          return [String(value)];
+        }
+      }
+
+      return [String(value)];
+    })
+    .join(" ")
+    .toLowerCase();
+}
+
+function buildCompanyLinks(company: Record<string, any>) {
+  const normalized = normalizeRow(company);
+  const id = normalized.id ? String(normalized.id) : "";
+  const slug = normalized.slug ? String(normalized.slug) : "";
+
+  return {
+    edit_url: id ? `/seminovos-locadoras/empresas/${id}/editar` : "",
+    view_url: slug ? `/empresa/${slug}` : "",
+    internal_view_url: slug ? `/seminovos-locadoras/empresa/${slug}` : "",
+  };
+}
+
+function extractSavePayload(body: any, sessionEmail?: string) {
+  const cnpj = onlyDigits(body?.cnpj);
+
+  const corporate_name = String(
+    body?.corporate_name ?? body?.razao_social ?? ""
+  ).trim();
+
+  const trade_name = String(
+    body?.trade_name ?? body?.nome_fantasia ?? ""
+  ).trim();
+
+  const state_registration = String(
+    body?.state_registration ?? body?.inscricao_estadual ?? ""
+  ).trim();
+
+  const commercial_contact_name = String(
+    body?.commercial_contact_name ?? body?.responsavel ?? ""
+  ).trim();
+
+  const commercial_contact_cpf = onlyDigits(
+    body?.commercial_contact_cpf ?? body?.cpf_responsavel ?? ""
+  );
+
+  const commercial_whatsapp = onlyDigits(
+    body?.commercial_whatsapp ?? body?.whatsapp ?? ""
+  );
+
+  const primary_email = String(
+    body?.primary_email ?? body?.email_principal ?? ""
+  )
+    .trim()
+    .toLowerCase();
+
+  const secondary_email_1 = String(
+    body?.secondary_email_1 ?? body?.email_secundario_1 ?? ""
+  )
+    .trim()
+    .toLowerCase();
+
+  const secondary_email_2 = String(
+    body?.secondary_email_2 ?? body?.email_secundario_2 ?? ""
+  )
+    .trim()
+    .toLowerCase();
+
+  const secondary_email_3 = String(
+    body?.secondary_email_3 ?? body?.email_secundario_3 ?? ""
+  )
+    .trim()
+    .toLowerCase();
+
+  const secondary_email_4 = String(
+    body?.secondary_email_4 ?? body?.email_secundario_4 ?? ""
+  )
+    .trim()
+    .toLowerCase();
+
+  const secondary_email_5 = String(
+    body?.secondary_email_5 ?? body?.email_secundario_5 ?? ""
+  )
+    .trim()
+    .toLowerCase();
+
+  const website = String(body?.website ?? body?.site ?? "").trim();
+  const city = String(body?.city ?? body?.cidade ?? "").trim();
+  const state = String(body?.state ?? body?.estado ?? "").trim().toUpperCase();
+  const address = String(body?.address ?? body?.endereco ?? "").trim();
+  const address_number = String(
+    body?.address_number ?? body?.numero ?? ""
+  ).trim();
+  const neighborhood = String(
+    body?.neighborhood ?? body?.bairro ?? ""
+  ).trim();
+  const zip_code = onlyDigits(body?.zip_code ?? body?.cep ?? "");
+  const public_description = String(
+    body?.public_description ?? body?.descricao_publica ?? ""
+  ).trim();
+  const notes = String(
+    body?.notes ?? body?.observacoes ?? ""
+  ).trim();
+
+  const logo_file_name = String(body?.logo_file_name ?? "").trim();
+  const contract_file_name = String(body?.contract_file_name ?? "").trim();
+
+  const accepts_whatsapp_contact = Boolean(
+    body?.accepts_whatsapp_contact ?? body?.aceita_contato_whatsapp ?? false
+  );
+
+  const receives_leads = Boolean(
+    body?.receives_leads ?? body?.recebe_leads ?? false
+  );
+
+  const has_contract_template = Boolean(
+    body?.has_contract_template ?? body?.possui_contrato_modelo ?? false
+  );
+
+  const maintenance_fee_monthly =
+    body?.maintenance_fee_monthly !== undefined &&
+    body?.maintenance_fee_monthly !== null &&
+    String(body.maintenance_fee_monthly).trim() !== ""
+      ? Number(body.maintenance_fee_monthly)
+      : null;
+
+  const active =
+    body?.active !== undefined ? Boolean(body.active) : true;
+
+  const company_type = String(
+    body?.company_type ?? "locadora"
+  ).trim().toLowerCase();
+
+  const accepted_terms = Boolean(body?.accepted_terms ?? false);
+  const accepted_at = body?.accepted_at
+    ? String(body.accepted_at)
+    : new Date().toISOString();
+  const accepted_name = String(body?.accepted_name ?? "").trim();
+  const accepted_document = onlyDigits(body?.accepted_document ?? "");
+  const accepted_term_version = String(
+    body?.accepted_term_version || "v1_comissao_plataforma"
+  ).trim();
+
+  const slugInput = String(body?.slug ?? "").trim();
+
+  return {
+    cnpj,
+    corporate_name,
+    trade_name,
+    state_registration,
+    commercial_contact_name,
+    commercial_contact_cpf: commercial_contact_cpf || null,
+    commercial_whatsapp,
+    primary_email,
+    secondary_email_1: secondary_email_1 || null,
+    secondary_email_2: secondary_email_2 || null,
+    secondary_email_3: secondary_email_3 || null,
+    secondary_email_4: secondary_email_4 || null,
+    secondary_email_5: secondary_email_5 || null,
+    website: website || null,
+    city,
+    state,
+    address: address || null,
+    address_number: address_number || null,
+    neighborhood: neighborhood || null,
+    zip_code: zip_code || null,
+    public_description: public_description || null,
+    notes: notes || null,
+    logo_file_name: logo_file_name || null,
+    contract_file_name: contract_file_name || null,
+    accepts_whatsapp_contact,
+    receives_leads,
+    has_contract_template,
+    maintenance_fee_monthly:
+      maintenance_fee_monthly !== null && !Number.isNaN(maintenance_fee_monthly)
+        ? maintenance_fee_monthly
+        : null,
+    active,
+    company_type,
+    slugInput,
+    accepted_terms,
+    accepted_at,
+    accepted_name,
+    accepted_document,
+    accepted_term_version,
+    session_email: sessionEmail ? sessionEmail.toLowerCase() : null,
+  };
+}
+
+function buildUpdatePayloadForExisting(
+  payload: ReturnType<typeof extractSavePayload>,
+  id: string
+) {
+  const generatedSlug = payload.slugInput
+    ? payload.slugInput
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9-]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .replace(/--+/g, "-")
+    : buildSlugFromName(
+        payload.trade_name || payload.corporate_name,
+        payload.city,
+        payload.state,
+        id
+      );
+
+  return {
+    cnpj: payload.cnpj,
+    company_type: payload.company_type,
+    razao_social: payload.corporate_name || null,
+    nome_fantasia: payload.trade_name || null,
+    inscricao_estadual: payload.state_registration || null,
+    responsavel: payload.commercial_contact_name || null,
+    cpf_responsavel: payload.commercial_contact_cpf,
+    whatsapp: payload.commercial_whatsapp || null,
+    email_principal: payload.primary_email || null,
+    email_secundario_1: payload.secondary_email_1,
+    email_secundario_2: payload.secondary_email_2,
+    email_secundario_3: payload.secondary_email_3,
+    email_secundario_4: payload.secondary_email_4,
+    email_secundario_5: payload.secondary_email_5,
+    site: payload.website,
+    cidade: payload.city,
+    estado: payload.state,
+    endereco: payload.address,
+    numero: payload.address_number,
+    bairro: payload.neighborhood,
+    cep: payload.zip_code,
+    descricao_publica: payload.public_description,
+    aceita_contato_whatsapp: payload.accepts_whatsapp_contact,
+    recebe_leads: payload.receives_leads,
+    possui_contrato_modelo: payload.has_contract_template,
+    logo_file_name: payload.logo_file_name,
+    contract_file_name: payload.contract_file_name,
+    observacoes: payload.notes,
+    maintenance_fee_monthly: payload.maintenance_fee_monthly,
+    active: payload.active,
+    slug: generatedSlug,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export async function GET(request: NextRequest) {
   try {
-    const supabase = getSupabaseServerClient();
+    const supabaseAdmin = getAdminClient();
 
-    const { data, error } = await supabase
+    if (!supabaseAdmin) {
+      return jsonError(
+        "Variáveis do Supabase não configuradas. Verifique NEXT_PUBLIC_SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY.",
+        500
+      );
+    }
+
+    const { searchParams } = new URL(request.url);
+    const query = String(searchParams.get("q") || "").trim().toLowerCase();
+
+    const { data, error } = await supabaseAdmin
       .from("sl_companies")
-      .select(baseSelect)
+      .select("*")
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.error("Erro ao listar empresas:", error);
-
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Erro ao listar empresas.",
-          error: error.message,
-          companies: [],
-          total: 0,
-        },
-        { status: 500 }
-      );
+      return jsonError(`Falha ao carregar empresas: ${error.message}`, 500);
     }
 
-    const companies = Array.isArray(data)
-      ? (data as CompanyRow[]).map(mapRowToApiItem)
-      : [];
+    const rows = Array.isArray(data) ? data : [];
+    const normalized = rows.map((row) => {
+      const item = normalizeRow(row);
+      const links = buildCompanyLinks(row);
 
-    return NextResponse.json(
-      {
-        success: true,
-        message: "Empresas listadas com sucesso.",
-        companies,
-        total: companies.length,
-      },
-      { status: 200 }
-    );
+      return {
+        ...item,
+        ...links,
+      };
+    });
+
+    const filtered = !query
+      ? normalized
+      : normalized.filter((item) => buildHaystack(item).includes(query));
+
+    return NextResponse.json({
+      success: true,
+      message: "Empresas listadas com sucesso.",
+      companies: filtered,
+      total: filtered.length,
+    });
   } catch (error) {
-    console.error("Erro interno ao listar empresas:", error);
-
     const message =
-      error instanceof Error ? error.message : "Erro interno ao listar empresas.";
+      error instanceof Error
+        ? error.message
+        : "Erro interno ao listar empresas.";
 
-    return NextResponse.json(
-      {
-        success: false,
-        message,
-        companies: [],
-        total: 0,
-      },
-      { status: 500 }
-    );
+    return jsonError(message, 500);
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as RequestBody;
-    const supabase = getSupabaseServerClient();
-
-    const id = crypto.randomUUID();
-    const payload = normalizePayload(body, id);
-
-    if (!payload.cnpj) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "CNPJ é obrigatório para cadastrar a empresa.",
-        },
-        { status: 400 }
+    if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceRoleKey) {
+      return jsonError(
+        "Variáveis do Supabase não configuradas. Verifique NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY e SUPABASE_SERVICE_ROLE_KEY.",
+        500
       );
     }
 
-    const { data: existingCompanies, error: duplicateError } = await supabase
+    const authHeader = request.headers.get("authorization") || "";
+    const token = authHeader.startsWith("Bearer ")
+      ? authHeader.slice(7).trim()
+      : "";
+
+    if (!token) {
+      return jsonError(
+        "Sessão inválida. Faça login novamente na área da empresa.",
+        401
+      );
+    }
+
+    const supabaseAuth = getAuthClient();
+
+    if (!supabaseAuth) {
+      return jsonError("Supabase Auth não configurado no servidor.", 500);
+    }
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabaseAuth.auth.getUser(token);
+
+    if (authError || !user?.email) {
+      return jsonError(
+        "Não foi possível validar a sessão da empresa. Entre novamente e tente de novo.",
+        401
+      );
+    }
+
+    const body = await request.json();
+    const payload = extractSavePayload(body, user.email);
+
+    if (payload.cnpj.length !== 14) {
+      return jsonError("Informe um CNPJ válido.");
+    }
+
+    if (!payload.trade_name) {
+      return jsonError("Informe o nome fantasia / empresa.");
+    }
+
+    if (!payload.commercial_whatsapp || payload.commercial_whatsapp.length < 10) {
+      return jsonError("Informe um WhatsApp válido.");
+    }
+
+    if (!isValidEmail(payload.primary_email)) {
+      return jsonError("Informe um e-mail principal válido.");
+    }
+
+    if (!payload.city) {
+      return jsonError("Informe a cidade.");
+    }
+
+    if (!payload.state) {
+      return jsonError("Informe o estado.");
+    }
+
+    if (!payload.accepted_name) {
+      return jsonError("Informe o nome do responsável pelo aceite.");
+    }
+
+    if (payload.accepted_document.length < 11) {
+      return jsonError("Informe CPF ou CNPJ válido no aceite.");
+    }
+
+    if (!payload.accepted_terms) {
+      return jsonError(
+        "É obrigatório aceitar os termos comerciais da plataforma."
+      );
+    }
+
+    const supabaseAdmin = getAdminClient();
+
+    if (!supabaseAdmin) {
+      return jsonError("Supabase Admin não configurado no servidor.", 500);
+    }
+
+    const { data: existingCompany, error: duplicateError } = await supabaseAdmin
       .from("sl_companies")
-      .select("id, cnpj, nome_fantasia, razao_social")
+      .select("id, cnpj, nome_fantasia, razao_social, cidade, estado, slug")
       .eq("cnpj", payload.cnpj)
-      .limit(1);
+      .maybeSingle();
 
     if (duplicateError) {
-      console.error("Erro ao validar duplicidade por CNPJ:", duplicateError);
-
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Erro ao validar duplicidade da empresa.",
-          error: duplicateError.message,
-          details: duplicateError.details ?? null,
-          hint: duplicateError.hint ?? null,
-          code: duplicateError.code ?? null,
-        },
-        { status: 500 }
+      return jsonError(
+        `Erro ao validar duplicidade do CNPJ: ${duplicateError.message}`,
+        500
       );
     }
 
-    const existingCompany = Array.isArray(existingCompanies)
-      ? (existingCompanies[0] as DuplicateCheckRow | undefined)
-      : undefined;
+    if (existingCompany?.id) {
+      const normalizedExisting = normalizeRow(existingCompany);
+      const links = buildCompanyLinks(existingCompany);
 
-    if (existingCompany) {
-      const existingName =
-        existingCompany.nome_fantasia ||
-        existingCompany.razao_social ||
-        "empresa já cadastrada";
-
-      return NextResponse.json(
+      return jsonError(
+        "Este CNPJ já está cadastrado na base empresarial.",
+        409,
         {
-          success: false,
-          message: `Já existe uma empresa cadastrada com este CNPJ: ${existingName}.`,
-          error: "duplicate_cnpj",
-          company_id: existingCompany.id,
-        },
-        { status: 409 }
+          duplicate: true,
+          existing_company: {
+            ...normalizedExisting,
+            ...links,
+          },
+          edit_url: links.edit_url,
+          view_url: links.view_url,
+        }
       );
     }
+
+    const generatedSlug = payload.slugInput
+      ? payload.slugInput
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/[^a-z0-9-]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .replace(/--+/g, "-")
+      : buildSlugFromName(
+          payload.trade_name || payload.corporate_name,
+          payload.city,
+          payload.state,
+          ""
+        );
 
     const insertPayload = {
-      id,
-      ...payload,
+      company_type: payload.company_type,
+      cnpj: payload.cnpj,
+      razao_social: payload.corporate_name || null,
+      nome_fantasia: payload.trade_name,
+      inscricao_estadual: payload.state_registration || null,
+      responsavel: payload.commercial_contact_name || null,
+      cpf_responsavel: payload.commercial_contact_cpf,
+      whatsapp: payload.commercial_whatsapp,
+      email_principal: payload.primary_email,
+      email_secundario_1: payload.secondary_email_1,
+      email_secundario_2: payload.secondary_email_2,
+      email_secundario_3: payload.secondary_email_3,
+      email_secundario_4: payload.secondary_email_4,
+      email_secundario_5: payload.secondary_email_5,
+      site: payload.website,
+      cidade: payload.city,
+      estado: payload.state,
+      endereco: payload.address,
+      numero: payload.address_number,
+      bairro: payload.neighborhood,
+      cep: payload.zip_code,
+      descricao_publica: payload.public_description,
+      aceita_contato_whatsapp: payload.accepts_whatsapp_contact,
+      recebe_leads: payload.receives_leads,
+      possui_contrato_modelo: payload.has_contract_template,
+      logo_file_name: payload.logo_file_name,
+      contract_file_name: payload.contract_file_name,
+      observacoes: payload.notes,
+      maintenance_fee_monthly: payload.maintenance_fee_monthly,
+      active: payload.active,
+      slug: generatedSlug,
     };
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from("sl_companies")
       .insert(insertPayload)
-      .select(baseSelect)
+      .select("*")
       .single();
 
     if (error) {
-      console.error("Erro Supabase ao salvar empresa:", error);
-      console.error("Payload enviado para sl_companies:", insertPayload);
-
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Erro ao salvar empresa.",
-          error: error.message,
-          details: error.details ?? null,
-          hint: error.hint ?? null,
-          code: error.code ?? null,
-        },
-        { status: 500 }
-      );
+      return jsonError(`Erro ao salvar empresa: ${error.message}`, 500);
     }
 
-    const company = mapRowToApiItem(data as CompanyRow);
+    const normalizedSaved = normalizeRow(data || {});
+    const links = buildCompanyLinks(data || {});
 
-    return NextResponse.json(
-      {
-        success: true,
-        message: "Empresa salva com sucesso.",
-        company,
+    return NextResponse.json({
+      success: true,
+      message: "Empresa cadastrada com sucesso.",
+      company: {
+        ...normalizedSaved,
+        ...links,
       },
-      { status: 201 }
-    );
+      edit_url: links.edit_url,
+      view_url: links.view_url,
+    });
   } catch (error) {
-    console.error("Erro interno ao salvar empresa:", error);
-
     const message =
-      error instanceof Error ? error.message : "Erro interno ao salvar empresa.";
+      error instanceof Error
+        ? error.message
+        : "Erro interno ao salvar empresa.";
 
-    return NextResponse.json(
-      {
-        success: false,
-        message,
-      },
-      { status: 500 }
-    );
+    return jsonError(message, 500);
   }
 }
 
-export async function PUT(request: Request) {
+export async function PUT(request: NextRequest) {
   try {
-    const body = (await request.json()) as RequestBody;
-    const id = cleanString(body.id);
+    if (!supabaseUrl || !supabaseServiceRoleKey) {
+      return jsonError(
+        "Variáveis do Supabase não configuradas. Verifique NEXT_PUBLIC_SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY.",
+        500
+      );
+    }
+
+    const body = await request.json();
+    const id = String(body?.id || "").trim();
 
     if (!id) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "ID da empresa é obrigatório para atualizar.",
-        },
-        { status: 400 }
+      return jsonError("ID da empresa não informado.");
+    }
+
+    const payload = extractSavePayload(body);
+
+    if (payload.cnpj.length !== 14) {
+      return jsonError("Informe um CNPJ válido.");
+    }
+
+    if (!payload.trade_name) {
+      return jsonError("Informe o nome fantasia.");
+    }
+
+    if (!payload.city) {
+      return jsonError("Informe a cidade.");
+    }
+
+    if (!payload.state) {
+      return jsonError("Informe o estado.");
+    }
+
+    const supabaseAdmin = getAdminClient();
+
+    if (!supabaseAdmin) {
+      return jsonError("Supabase Admin não configurado no servidor.", 500);
+    }
+
+    const { data: currentCompany, error: currentError } = await supabaseAdmin
+      .from("sl_companies")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (currentError) {
+      return jsonError(
+        `Erro ao localizar empresa para edição: ${currentError.message}`,
+        500
       );
     }
 
-    const supabase = getSupabaseServerClient();
-    const payload = normalizePayload(body, id);
+    if (!currentCompany?.id) {
+      return jsonError("Empresa não encontrada para edição.", 404);
+    }
 
-    if (payload.cnpj) {
-      const { data: duplicateCompanies, error: duplicateError } = await supabase
+    if (payload.cnpj !== onlyDigits(currentCompany?.cnpj || "")) {
+      const { data: duplicateCompany, error: duplicateError } = await supabaseAdmin
         .from("sl_companies")
-        .select("id, cnpj, nome_fantasia, razao_social")
+        .select("id, cnpj")
         .eq("cnpj", payload.cnpj)
         .neq("id", id)
-        .limit(1);
+        .maybeSingle();
 
       if (duplicateError) {
-        console.error("Erro ao validar duplicidade no update:", duplicateError);
-
-        return NextResponse.json(
-          {
-            success: false,
-            message: "Erro ao validar duplicidade da empresa.",
-            error: duplicateError.message,
-            details: duplicateError.details ?? null,
-            hint: duplicateError.hint ?? null,
-            code: duplicateError.code ?? null,
-          },
-          { status: 500 }
+        return jsonError(
+          `Erro ao validar duplicidade do CNPJ na edição: ${duplicateError.message}`,
+          500
         );
       }
 
-      const duplicateCompany = Array.isArray(duplicateCompanies)
-        ? (duplicateCompanies[0] as DuplicateCheckRow | undefined)
-        : undefined;
-
-      if (duplicateCompany) {
-        const duplicateName =
-          duplicateCompany.nome_fantasia ||
-          duplicateCompany.razao_social ||
-          "empresa já cadastrada";
-
-        return NextResponse.json(
-          {
-            success: false,
-            message: `Já existe outra empresa cadastrada com este CNPJ: ${duplicateName}.`,
-            error: "duplicate_cnpj",
-            company_id: duplicateCompany.id,
-          },
-          { status: 409 }
+      if (duplicateCompany?.id) {
+        return jsonError(
+          "Já existe outra empresa cadastrada com este CNPJ.",
+          409
         );
       }
     }
 
-    const { data, error } = await supabase
+    const updatePayload = buildUpdatePayloadForExisting(payload, id);
+
+    const { data: updated, error: updateError } = await supabaseAdmin
       .from("sl_companies")
-      .update(payload)
+      .update(updatePayload)
       .eq("id", id)
-      .select(baseSelect)
+      .select("*")
       .single();
 
-    if (error) {
-      console.error("Erro Supabase ao atualizar empresa:", error);
-      console.error("Payload enviado para update de sl_companies:", {
-        id,
-        ...payload,
-      });
-
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Erro ao atualizar empresa.",
-          error: error.message,
-          details: error.details ?? null,
-          hint: error.hint ?? null,
-          code: error.code ?? null,
-        },
-        { status: 500 }
+    if (updateError) {
+      return jsonError(
+        `Não foi possível salvar a edição da empresa: ${updateError.message}`,
+        500
       );
     }
 
-    const company = mapRowToApiItem(data as CompanyRow);
+    const normalizedUpdated = normalizeRow(updated || {});
+    const links = buildCompanyLinks(updated || {});
 
-    return NextResponse.json(
-      {
-        success: true,
-        message: "Empresa atualizada com sucesso.",
-        company,
+    return NextResponse.json({
+      success: true,
+      message: "Empresa atualizada com sucesso.",
+      company: {
+        ...normalizedUpdated,
+        ...links,
       },
-      { status: 200 }
-    );
+      edit_url: links.edit_url,
+      view_url: links.view_url,
+      internal_view_url: links.internal_view_url,
+    });
   } catch (error) {
-    console.error("Erro interno ao atualizar empresa:", error);
-
     const message =
       error instanceof Error
         ? error.message
         : "Erro interno ao atualizar empresa.";
 
-    return NextResponse.json(
-      {
-        success: false,
-        message,
-      },
-      { status: 500 }
-    );
-  }
-}
-
-export async function DELETE(request: Request) {
-  try {
-    const supabase = getSupabaseServerClient();
-    const { searchParams } = new URL(request.url);
-    const id = cleanString(searchParams.get("id"));
-
-    if (!id) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "ID da empresa é obrigatório para excluir.",
-        },
-        { status: 400 }
-      );
-    }
-
-    const { data: existingCompanies, error: findError } = await supabase
-      .from("sl_companies")
-      .select("id, logo_file_name")
-      .eq("id", id)
-      .limit(1);
-
-    if (findError) {
-      console.error("Erro ao localizar empresa para exclusão:", findError);
-
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Erro ao localizar empresa para exclusão.",
-          error: findError.message,
-        },
-        { status: 500 }
-      );
-    }
-
-    const existingCompany = Array.isArray(existingCompanies)
-      ? (existingCompanies[0] as {
-          id: string;
-          logo_file_name: string | null;
-        } | undefined)
-      : undefined;
-
-    if (!existingCompany) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Empresa não encontrada para exclusão.",
-        },
-        { status: 404 }
-      );
-    }
-
-    if (existingCompany.logo_file_name) {
-      const { error: storageError } = await supabase.storage
-        .from(STORAGE_BUCKET)
-        .remove([existingCompany.logo_file_name]);
-
-      if (storageError) {
-        console.error(
-          "Aviso ao excluir logomarca do Storage:",
-          storageError.message
-        );
-      }
-    }
-
-    const { error: deleteError } = await supabase
-      .from("sl_companies")
-      .delete()
-      .eq("id", id);
-
-    if (deleteError) {
-      console.error("Erro ao excluir empresa:", deleteError);
-
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Erro ao excluir empresa.",
-          error: deleteError.message,
-          details: deleteError.details ?? null,
-          hint: deleteError.hint ?? null,
-          code: deleteError.code ?? null,
-        },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json(
-      {
-        success: true,
-        message: "Empresa excluída com sucesso.",
-        id,
-      },
-      { status: 200 }
-    );
-  } catch (error) {
-    console.error("Erro interno ao excluir empresa:", error);
-
-    const message =
-      error instanceof Error ? error.message : "Erro interno ao excluir empresa.";
-
-    return NextResponse.json(
-      {
-        success: false,
-        message,
-      },
-      { status: 500 }
-    );
+    return jsonError(message, 500);
   }
 }
